@@ -27,13 +27,9 @@ isi config.json
 DynamicJsonDocument json(2048);
 WiFiClient client;
 WebServer server(80);
-NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); 
-LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMNS, 2);  
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
+LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMNS, 2);
 Adafruit_MLX90614 mlx(MLX90614_ADDRESS);
-
-int servoPos;
-const int servoChannel = 5;
-const int servoPin = 13;
 
 // the number of the LED pin
 const int ledPin = 4; // 16 corresponds to GPIO16
@@ -44,7 +40,8 @@ const int ledChannel = 7;
 const int pwmResolution = 8;
 int lampBrightness;
 
-unsigned long lastHTTPRequest = 0;
+unsigned long lastSystemLoop = 0;
+int systemStage = 0;
 
 // Camera API
 String sendPhoto(); // This function sends image and receive response from server about flashlight,servo,etc
@@ -82,12 +79,18 @@ void setLamp(int newVal);
 
 void setup()
 {
+  lcd.begin();
+  delay(100);
+  lcd.backlight();
+  delay(100);
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("System init...");
   Serial.begin(115200);
   // configure LED PWM functionalitites
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   log_d("buildVer : %s\nsdkVer : %s\nchipRev : %lu\nfreeSketch : %lu\nsketchSize : %lu\nflashChipSize : %lu\nsketchMD5 : %s\ncpuFreq : %luMHz\nmacAddr : %s\n", BUILD_VERSION, ESP.getSdkVersion(), ESP.getChipRevision(), ESP.getFreeSketchSpace(), ESP.getSketchSize(), ESP.getFlashChipSize(), ESP.getSketchMD5().c_str(), ESP.getCpuFreqMHz(), WiFi.macAddress().c_str());
   log_d("Mounting FS...");
-  delay(1000);
   if (!SPIFFS.begin())
   {
     log_d("Failed to mount file system");
@@ -104,7 +107,13 @@ void setup()
   else
     log_d("Config loaded");
 
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Camera init...");
   initializeCamera();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi init...");
   initializeWiFi();
   ledcSetup(ledChannel, freq, pwmResolution);
   setLamp(0);
@@ -112,87 +121,65 @@ void setup()
   ledcAttachPin(ledPin, ledChannel);
   httpReuse = true;
 
-  lcd.begin();
-  delay(100);
-  lcd.backlight();
-  delay(100);
   lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("Hello World!");
-  delay(2000);
+  lcd.setCursor(0, 0);
+  lcd.print("Sistem siap digunakan...");
 }
 
 void loop()
 {
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print(sonar.ping_cm());
-  Serial.printf("%d CM\n",sonar.ping_cm());
-  lcd.setCursor(0,1);
-  lcd.print(mlx.readObjectTempC());
-  Serial.printf("%f degC\n",mlx.readObjectTempC());
-  delay(1000);
-//   if (serverAvailable)
-//   {
-//     server.handleClient(); // Listen for HTTP requests from clients
-//   }
-//   else
-//   {
-//     if (isWifiConnected()) // If WiFi is connected then do sendPhoto() every defined intervals second
-//     {
-//       if (millis() - lastHTTPRequest >= HTTP_REQUEST_INTERVAL)
-//       {
-//         lastHTTPRequest = millis();
-//         const String responsePayload = sendPhoto();
+  if (serverAvailable)
+  {
+    server.handleClient(); // Listen for HTTP requests from clients
+  }
+  if (isWifiConnected()) // If WiFi is connected then do sendPhoto() every defined intervals second
+  {
+    if (millis() - lastSystemLoop >= SYSTEM_LOOP_INTERVAL)
+    {
+      lastSystemLoop = millis();
+      if(systemStage == 0){
+        const String responsePayload = sendPhoto();
+        delay(5000);
+      }
+      // const String responsePayload = sendPhoto();
+      // if (responsePayload != "Failed")
+      // {
+      //   disconnectFlag = false;
+      //   DynamicJsonDocument out(2048);
+      //   deserializeJson(out, responsePayload);
+      //   log_d("servo: %d\nflash: %d", out["servo"].as<int>(), out["flash"].as<int>());
+      //   out["flash"] = constrain(out["flash"].as<int>(), 0, 100);
+      //   out["servo"] = constrain(out["servo"].as<int>(), 0, 180);
+      // }
+      else
+      {
+        if (!disconnectFlag) // If HTTP POST is not giving any response and disconnectFlag is on reset condition, we set disconnectFlag and record current time
+        {
+          disconnectFlag = true;
+          disconnectStamp = millis();
+        }
+      }
+    }
+  }
+  else
+  {
+    if (!disconnectFlag) // If WiFi is not connected and disconnectFlag is on reset condition, we set disconnectFlag and record current time
+    {
+      disconnectFlag = true;
+      disconnectStamp = millis();
+    }
+  }
 
-//         if (responsePayload != "Failed")
-//         {
-//           disconnectFlag = false;
-//           DynamicJsonDocument out(2048);
-//           deserializeJson(out, responsePayload);
-//           log_d("servo: %d\nflash: %d", out["servo"].as<int>(), out["flash"].as<int>());
-//           out["flash"] = constrain(out["flash"].as<int>(), 0, 100);
-//           out["servo"] = constrain(out["servo"].as<int>(), 0, 180);
-//           if (servoPos != out["servo"])
-//           {
-//             servoPos = out["servo"];
-//           }
-//           if (lampBrightness != out["flash"])
-//           {
-//             lampBrightness = out["flash"];
-//             setLamp(lampBrightness);
-//           }
-//         }
-//         else
-//         {
-//           if (!disconnectFlag) // If HTTP POST is not giving any response and disconnectFlag is on reset condition, we set disconnectFlag and record current time
-//           {
-//             disconnectFlag = true;
-//             disconnectStamp = millis();
-//           }
-//         }
-//       }
-//     }
-//     else
-//     {
-//       if (!disconnectFlag) // If WiFi is not connected and disconnectFlag is on reset condition, we set disconnectFlag and record current time
-//       {
-//         disconnectFlag = true;
-//         disconnectStamp = millis();
-//       }
-//     }
-//   }
-//   if (disconnectFlag && millis() - disconnectStamp >= MAXIMUM_DISCONNECT_TIME) // If time has passed MAXIMUM_DISCONNECT_TIME after disconnectFlag was set
-//   {
-//     // We assume that WiFi is not connected to internet, so we reset WiFi credentials and IS_CONNECTED flag and then reboot
-//     json["WIFI_SSID"] = "KONEKSI TERPUTUS";
-//     json["WIFI_PASS"] = "";
-//     json["IS_CONNECTED"] = false;
-//     writeConfig();
-//     delay(500);
-//     ESP.restart();
-//   }
-
+  if (disconnectFlag && millis() - disconnectStamp >= MAXIMUM_DISCONNECT_TIME) // If time has passed MAXIMUM_DISCONNECT_TIME after disconnectFlag was set
+  {
+    // We assume that WiFi is not connected to internet, so we reset WiFi credentials and IS_CONNECTED flag and then reboot
+    json["WIFI_SSID"] = "KONEKSI TERPUTUS";
+    json["WIFI_PASS"] = "";
+    json["IS_CONNECTED"] = false;
+    writeConfig();
+    delay(500);
+    ESP.restart();
+  }
 }
 
 // Lamp Control
@@ -202,29 +189,34 @@ void setLamp(int newVal)
   int brightness = round((pow(2, (1 + (newVal * 0.02))) - 2) / 6 * (pow(2, pwmResolution) - 1));
   ledcWrite(ledChannel, (newVal != 0) ? brightness : 0);
 }
+
 /////////////////// Camera API ///////////////////////////
 int cameraFailCounter;
 String sendPhoto()
 {
   String response;
   camera_fb_t *fb = NULL;
-  fb = esp_camera_fb_get();
-  if (!fb)
-  {
-    log_d("Camera capture failed");
-    cameraFailCounter++;
-    if(cameraFailCounter > 5)
-      ESP.restart();
-    return "Failed";
-  }
   cameraFailCounter = 0;
   log_d("Connecting to server: %s", baseUri);
 
   if (client.connect(baseUri, serverPort))
   {
+  setLamp(100);
+  delay(400);
+  fb = esp_camera_fb_get();
+  delay(100);
+  setLamp(0);
+  if (!fb)
+  {
+    log_d("Camera capture failed");
+    cameraFailCounter++;
+    if (cameraFailCounter > 5)
+      ESP.restart();
+    return "Failed";
+  }
     log_d("Connected to server");
     String head = "--AAA\r\nContent-Disposition: form-data; name=\"imageFile\"; filename=\"esp32-cam.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n";
-    sendPOST(head.c_str(), "multipart/form-data; boundary=AAA", requestURL, fb->buf, fb->len, response);
+    sendPOST(head.c_str(), "multipart/form-data; boundary=AAA", recognizeURL, fb->buf, fb->len, response);
     esp_camera_fb_return(fb);
     client.stop();
   }
@@ -683,21 +675,15 @@ void pgRestart() // Request is called when user press restart button from web
 void pgAccInfo() // Request is called when user press submit button from web
 {
   bool writeConfigFlag = false;
-  String usrn = server.arg(F("usrn"));
-  String unpw = server.arg(F("unpw"));
   String ssid = server.arg(F("ssid"));
   String wfpw = server.arg(F("wfpw"));
 
-  if (usrn.length() > 32)
-    usrn = "overlength";
-  if (unpw.length() > 64)
-    unpw = "overlength";
   if (ssid.length() > 32)
     ssid = "overlength";
   if (wfpw.length() > 64)
     wfpw = "overlength";
 
-  log_d("Username : %s\nPassword : %s\nSSID : %s\nWiFiPW : %s\n", usrn.c_str(), unpw.c_str(), ssid.c_str(), wfpw.c_str());
+  log_d("SSID : %s\nWiFiPW : %s\n", ssid.c_str(), wfpw.c_str());
 
   if (initiateClient(ssid.c_str(), wfpw.c_str()))
   {
@@ -714,38 +700,14 @@ void pgAccInfo() // Request is called when user press submit button from web
     }
     if (client.connect(baseUri, serverPort)) // Try to connect to web
     {
-      log_d("Connected to server, begin post request");
-      // Initiate HTTP Request to identifyDevice.php
-      StaticJsonDocument<360> doc;
-      String jsonString;
-      doc[F("username")] = usrn.c_str();
-      doc[F("password")] = unpw.c_str();
-      doc[F("softssid")] = json["AP_SSID"].as<const char *>();
-      doc[F("softpswd")] = json["AP_PASS"].as<const char *>();
-      serializeJson(doc, jsonString);
-      log_d("JSON Size : %d", doc.memoryUsage());
-      log_d("Transferred JSON : %s", jsonString.c_str());
-      String head = "--AAA\r\nContent-Disposition: form-data; name=\"requestJSON\"; filename=\"request.json\"\r\nContent-Type: application/json\r\n\r\n";
-      sendPOST(head.c_str(), "multipart/form-data; boundary=AAA", identifyURL, (uint8_t *)jsonString.c_str(), jsonString.length(), responseStatus);
-      if (responseStatus == "success" || responseStatus == "recon")
+      log_d("Connected to server");
+      if (json["IS_CONNECTED"].as<bool>() != true)
       {
-        if (json["USERNAME"].as<String>() != usrn)
-        {
-          json["USERNAME"] = usrn.c_str();
-          writeConfigFlag = true;
-        }
-        if (json["USERPASS"].as<String>() != unpw)
-        {
-          json["USERPASS"] = unpw.c_str();
-          writeConfigFlag = true;
-        }
-        if (json["IS_CONNECTED"].as<bool>() != true)
-        {
-          json["IS_CONNECTED"] = true;
-          writeConfigFlag = true;
-        }
-        delay(10);
+        json["IS_CONNECTED"] = true;
+        writeConfigFlag = true;
       }
+      delay(10);
+      responseStatus = "success";
       client.stop();
     }
     else // Unable to connect to web, probably it's a wifi with no internet
@@ -771,8 +733,6 @@ void pgReqStatus() // Request is called when page is requesting config.json info
 {
   StaticJsonDocument<360> doc;
   String jsonString;
-  doc[F("usrn")] = json["USERNAME"].as<const char *>();
-  doc[F("unpw")] = json["USERPASS"].as<const char *>();
   doc[F("ssid")] = json["WIFI_SSID"].as<const char *>();
   doc[F("wfpw")] = json["WIFI_PASS"].as<const char *>();
   doc[F("message")] = responseStatus.c_str();
