@@ -28,7 +28,7 @@ DynamicJsonDocument json(2048);
 WiFiClient client;
 WebServer server(80);
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); 
-LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMNS, LCD_ROWS);  
+LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMNS, 2);  
 Adafruit_MLX90614 mlx(MLX90614_ADDRESS);
 
 int servoPos;
@@ -112,8 +112,7 @@ void setup()
   ledcAttachPin(ledPin, ledChannel);
   httpReuse = true;
 
-  Wire.begin(_SDA,_SCL);
-  lcd.init();
+  lcd.begin();
   delay(100);
   lcd.backlight();
   delay(100);
