@@ -4,6 +4,19 @@
 #define HTTP_REQUEST_TIMEOUT 5000
 #define MAXIMUM_DISCONNECT_TIME 900000 // Maximum WiFi disconnection time or server request time out before rollback to AP Mode and reset FB
 
+#define TRIGGER_PIN 12
+#define ECHO_PIN 2
+#define MAX_DISTANCE 200
+
+#define LCD_ADDRESS 0x27
+#define LCD_COLUMNS 16
+#define LCD_ROWS 2
+
+#define MLX90614_ADDRESS 0x5A
+
+#define _SDA 14
+#define _SCL 15
+
 static const char baseUri[] = "192.168.7.112";
 static const char espUpdaterPath[] = "/otoma/api/ESPUpdater.php";
 static const char requestURL[] = "/otoma/api/nitenanControllerRequest.php";

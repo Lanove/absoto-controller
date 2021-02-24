@@ -19,12 +19,17 @@ isi config.json
 #include "soc/rtc_cntl_reg.h"
 #include "esp_camera.h"
 #include <WebServer.h>
-#include <Servo.h>
+#include <Wire.h>
+#include <Adafruit_MLX90614.h>
+#include <NewPing.h>
+#include <LiquidCrystal_I2C.h>
 
 DynamicJsonDocument json(2048);
 WiFiClient client;
 WebServer server(80);
-Servo myservo; // create servo object to control a servo
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); 
+LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMNS, LCD_ROWS);  
+Adafruit_MLX90614 mlx(MLX90614_ADDRESS);
 
 int servoPos;
 const int servoChannel = 5;
@@ -78,7 +83,6 @@ void setLamp(int newVal);
 void setup()
 {
   Serial.begin(115200);
-  myservo.attach(servoPin, servoChannel); // attaches the servo on pin 13 to the servo object
   // configure LED PWM functionalitites
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   log_d("buildVer : %s\nsdkVer : %s\nchipRev : %lu\nfreeSketch : %lu\nsketchSize : %lu\nflashChipSize : %lu\nsketchMD5 : %s\ncpuFreq : %luMHz\nmacAddr : %s\n", BUILD_VERSION, ESP.getSdkVersion(), ESP.getChipRevision(), ESP.getFreeSketchSpace(), ESP.getSketchSize(), ESP.getFlashChipSize(), ESP.getSketchMD5().c_str(), ESP.getCpuFreqMHz(), WiFi.macAddress().c_str());
@@ -107,71 +111,89 @@ void setup()
   // attach the channel to the GPIO to be controlled
   ledcAttachPin(ledPin, ledChannel);
   httpReuse = true;
+
+  Wire.begin(_SDA,_SCL);
+  lcd.init();
+  delay(100);
+  lcd.backlight();
+  delay(100);
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Hello World!");
+  delay(2000);
 }
 
 void loop()
 {
-  if (serverAvailable)
-  {
-    server.handleClient(); // Listen for HTTP requests from clients
-  }
-  else
-  {
-    if (isWifiConnected()) // If WiFi is connected then do sendPhoto() every defined intervals second
-    {
-      if (millis() - lastHTTPRequest >= HTTP_REQUEST_INTERVAL)
-      {
-        lastHTTPRequest = millis();
-        const String responsePayload = sendPhoto();
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(sonar.ping_cm());
+  Serial.printf("%d CM\n",sonar.ping_cm());
+  lcd.setCursor(0,1);
+  lcd.print(mlx.readObjectTempC());
+  Serial.printf("%f degC\n",mlx.readObjectTempC());
+  delay(1000);
+//   if (serverAvailable)
+//   {
+//     server.handleClient(); // Listen for HTTP requests from clients
+//   }
+//   else
+//   {
+//     if (isWifiConnected()) // If WiFi is connected then do sendPhoto() every defined intervals second
+//     {
+//       if (millis() - lastHTTPRequest >= HTTP_REQUEST_INTERVAL)
+//       {
+//         lastHTTPRequest = millis();
+//         const String responsePayload = sendPhoto();
 
-        if (responsePayload != "Failed")
-        {
-          disconnectFlag = false;
-          DynamicJsonDocument out(2048);
-          deserializeJson(out, responsePayload);
-          log_d("servo: %d\nflash: %d", out["servo"].as<int>(), out["flash"].as<int>());
-          out["flash"] = constrain(out["flash"].as<int>(), 0, 100);
-          out["servo"] = constrain(out["servo"].as<int>(), 0, 180);
-          if (servoPos != out["servo"])
-          {
-            servoPos = out["servo"];
-            myservo.write(servoPos);
-          }
-          if (lampBrightness != out["flash"])
-          {
-            lampBrightness = out["flash"];
-            setLamp(lampBrightness);
-          }
-        }
-        else
-        {
-          if (!disconnectFlag) // If HTTP POST is not giving any response and disconnectFlag is on reset condition, we set disconnectFlag and record current time
-          {
-            disconnectFlag = true;
-            disconnectStamp = millis();
-          }
-        }
-      }
-    }
-    else
-    {
-      if (!disconnectFlag) // If WiFi is not connected and disconnectFlag is on reset condition, we set disconnectFlag and record current time
-      {
-        disconnectFlag = true;
-        disconnectStamp = millis();
-      }
-    }
-  }
-  if (disconnectFlag && millis() - disconnectStamp >= MAXIMUM_DISCONNECT_TIME) // If time has passed MAXIMUM_DISCONNECT_TIME after disconnectFlag was set
-  {
-    // We assume that WiFi is not connected to internet, so we reset WiFi credentials and IS_CONNECTED flag and then reboot
-    json["WIFI_SSID"] = "KONEKSI TERPUTUS";
-    json["WIFI_PASS"] = "";
-    json["IS_CONNECTED"] = false;
-    writeConfig();
-    delay(500);
-    ESP.restart();
-  }
+//         if (responsePayload != "Failed")
+//         {
+//           disconnectFlag = false;
+//           DynamicJsonDocument out(2048);
+//           deserializeJson(out, responsePayload);
+//           log_d("servo: %d\nflash: %d", out["servo"].as<int>(), out["flash"].as<int>());
+//           out["flash"] = constrain(out["flash"].as<int>(), 0, 100);
+//           out["servo"] = constrain(out["servo"].as<int>(), 0, 180);
+//           if (servoPos != out["servo"])
+//           {
+//             servoPos = out["servo"];
+//           }
+//           if (lampBrightness != out["flash"])
+//           {
+//             lampBrightness = out["flash"];
+//             setLamp(lampBrightness);
+//           }
+//         }
+//         else
+//         {
+//           if (!disconnectFlag) // If HTTP POST is not giving any response and disconnectFlag is on reset condition, we set disconnectFlag and record current time
+//           {
+//             disconnectFlag = true;
+//             disconnectStamp = millis();
+//           }
+//         }
+//       }
+//     }
+//     else
+//     {
+//       if (!disconnectFlag) // If WiFi is not connected and disconnectFlag is on reset condition, we set disconnectFlag and record current time
+//       {
+//         disconnectFlag = true;
+//         disconnectStamp = millis();
+//       }
+//     }
+//   }
+//   if (disconnectFlag && millis() - disconnectStamp >= MAXIMUM_DISCONNECT_TIME) // If time has passed MAXIMUM_DISCONNECT_TIME after disconnectFlag was set
+//   {
+//     // We assume that WiFi is not connected to internet, so we reset WiFi credentials and IS_CONNECTED flag and then reboot
+//     json["WIFI_SSID"] = "KONEKSI TERPUTUS";
+//     json["WIFI_PASS"] = "";
+//     json["IS_CONNECTED"] = false;
+//     writeConfig();
+//     delay(500);
+//     ESP.restart();
+//   }
+
 }
 
 // Lamp Control
